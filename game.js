@@ -190,14 +190,22 @@ function loadAdminData() {
         }
     }
     
+    // --- CORRECTION : Calcul du nombre de demandes réelles ---
+    const history = JSON.parse(localStorage.getItem('withdrawalHistory')) || [];
+    const totalDemandes = history.length;
+    
     document.getElementById('totalUsers').textContent = totalUsers;
     document.getElementById('totalPoints').textContent = totalPoints.toLocaleString();
-    document.getElementById('pendingRewards').textContent = getPendingRewards();
+    
+    // On met à jour le badge des demandes (assure-toi que l'ID est 'pendingRewards' ou 'totalRewards')
+    const pendingEl = document.getElementById('pendingRewards');
+    if (pendingEl) {
+        pendingEl.textContent = totalDemandes;
+    }
     
     loadUsersList();
     loadStockList();
 }
-
 // Load users list
 function loadUsersList() {
     const usersList = document.getElementById('usersList');
