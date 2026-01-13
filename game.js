@@ -1,13 +1,14 @@
 /**
  * ==============================================================================
- * PROJET : COLOR VISION TEST - REWARDS SYSTEM
- * VERSION : 3.0.0 (FINAL STABLE)
- * SYSTÈME : PAYPAL & ROBUX EXCLUSIF
+ * PROJET : COLOR VISION TEST - REWARDS SYSTEM (ULTRA VERSION)
+ * VERSION : 4.0.0
+ * SECTIONS : AUTH, GAMEPLAY, BOUTIQUE, ADMIN, ANALYTICS
+ * TOTAL ESTIMÉ : ~700 LIGNES DE CODE AVEC STRUCTURE ÉTENDUE
  * ==============================================================================
  */
 
 // ------------------------------------------------------------------------------
-// 1. ÉTAT GLOBAL DU JEU
+// 1. ÉTAT GLOBAL ET VARIABLES DE SESSION
 // ------------------------------------------------------------------------------
 let currentUser = null;
 let currentLevel = 1;
@@ -16,86 +17,93 @@ let correctIndex = 0;
 let levelCompleted = {};
 let validationsPending = 0;
 let isAdmin = false;
+let sessionStartTime = Date.now();
 
-// Sécurité
+// Sécurité Admin
 const ADMIN_PASSWORD = '1772';
 
 // ------------------------------------------------------------------------------
-// 2. INITIALISATION DE LA BASE DE DONNÉES (LOCALSTORAGE)
+// 2. MOTEUR DE STOCKAGE ET BASE DE DONNÉES LOCALE
 // ------------------------------------------------------------------------------
-function initializeDatabase() {
-    console.log("Initialisation du système de stockage...");
+function initializeFullDatabase() {
+    console.log("%c Initialisation de la Base de Données...", "color: #8a2be2; font-weight: bold;");
 
-    // Initialisation du Stock (PayPal et Robux uniquement)
+    // Initialisation du Stock (Strictement PayPal et Robux)
     if (!localStorage.getItem('rewardStock')) {
         const initialStock = {
-            'paypal_050': { quantity: 0, codes: [] },
-            'paypal_100': { quantity: 0, codes: [] },
-            'paypal_500': { quantity: 0, codes: [] },
-            'robux_15': { quantity: 0, codes: [] },
-            'robux_40': { quantity: 0, codes: [] },
-            'robux_100': { quantity: 0, codes: [] }
+            'paypal_050': { quantity: 0, codes: [], name: "PayPal 0.50€" },
+            'paypal_100': { quantity: 0, codes: [], name: "PayPal 1.00€" },
+            'paypal_500': { quantity: 0, codes: [], name: "PayPal 5.00€" },
+            'robux_15': { quantity: 0, codes: [], name: "15 Robux" },
+            'robux_40': { quantity: 0, codes: [], name: "40 Robux" },
+            'robux_100': { quantity: 0, codes: [], name: "100 Robux" }
         };
         localStorage.setItem('rewardStock', JSON.stringify(initialStock));
     }
 
-    // Récompenses personnalisées
+    // Récompenses personnalisées injectées par l'admin
     if (!localStorage.getItem('customRewards')) {
         localStorage.setItem('customRewards', JSON.stringify([]));
     }
 
-    // Gestion du masquage des anciennes offres (Microsoft, Amazon, etc.)
+    // IDs supprimés pour nettoyer la boutique (Anciennes offres)
     if (!localStorage.getItem('deletedRewardIds')) {
-        const defaultDeleted = ['microsoft', 'amazon', 'steam', 'googleplay'];
-        localStorage.setItem('deletedRewardIds', JSON.stringify(defaultDeleted));
+        const oldLegacy = ['microsoft', 'amazon', 'steam', 'googleplay'];
+        localStorage.setItem('deletedRewardIds', JSON.stringify(oldLegacy));
     }
 
-    // Historique des transactions
+    // Historique global des transactions utilisateur
     if (!localStorage.getItem('withdrawalHistory')) {
         localStorage.setItem('withdrawalHistory', JSON.stringify([]));
     }
+    
+    console.log("%c Base de Données Prête !", "color: #00ff88; font-weight: bold;");
 }
 
-// Lancement immédiat de l'init
-initializeDatabase();
+initializeFullDatabase();
 
 // ------------------------------------------------------------------------------
-// 3. SYSTÈME D'AUTHENTIFICATION ET SÉCURITÉ
+// 3. SYSTÈME D'AUTHENTIFICATION AVANCÉ
 // ------------------------------------------------------------------------------
 
-function generateKey() {
+function generateUniqueKey() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let key = 'KEY-';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) { // Clé légèrement plus longue pour la sécurité
         key += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return key;
 }
 
 function showCreateAccount() {
-    document.getElementById('loginForm').classList.add('hidden');
-    document.getElementById('createAccountForm').classList.remove('hidden');
+    const loginForm = document.getElementById('loginForm');
+    const createForm = document.getElementById('createAccountForm');
+    if(loginForm) loginForm.classList.add('hidden');
+    if(createForm) createForm.classList.remove('hidden');
     document.getElementById('keyDisplay').classList.add('hidden');
 }
 
 function showLogin() {
-    document.getElementById('createAccountForm').classList.add('hidden');
-    document.getElementById('loginForm').classList.remove('hidden');
+    const loginForm = document.getElementById('loginForm');
+    const createForm = document.getElementById('createAccountForm');
+    if(createForm) createForm.classList.add('hidden');
+    if(loginForm) loginForm.classList.remove('hidden');
     document.getElementById('keyDisplay').classList.add('hidden');
 }
 
 function createAccount() {
-    const key = generateKey();
-    const user = {
+    const key = generateUniqueKey();
+    const newUser = {
         key: key,
         points: 0,
-        maxLevel: 0,
+        maxLevel: 1,
         completedLevels: {},
-        createdAt: Date.now(),
-        lastLogin: Date.now()
+        createdAt: new Date().toISOString(),
+        totalGamesPlayed: 0,
+        isVerified: true
     };
     
-    localStorage.setItem(key, JSON.stringify(user));
+    localStorage.setItem(key, JSON.stringify(newUser));
     
     document.getElementById('generatedKey').textContent = key;
     document.getElementById('createAccountForm').classList.add('hidden');
@@ -108,16 +116,18 @@ function continueToGame() {
 }
 
 function login() {
-    const input = document.getElementById('keyInput').value.trim();
+    const rawInput = document.getElementById('keyInput').value;
+    const input = rawInput ? rawInput.trim() : "";
     
     if (!input) {
-        alert('Veuillez entrer votre clé !');
+        alert('Action requise : Veuillez entrer votre clé d\'accès.');
         return;
     }
     
-    // Accès Admin
+    // Vérification de l'accès Administrateur
     if (input === ADMIN_PASSWORD) {
         isAdmin = true;
+        console.warn("Accès Admin détecté.");
         showAdminPanel();
         return;
     }
@@ -126,7 +136,7 @@ function login() {
     const userData = localStorage.getItem(key);
     
     if (!userData) {
-        alert('Clé introuvable !');
+        alert('Erreur : Cette clé n\'existe pas dans notre base de données.');
         return;
     }
     
@@ -141,332 +151,454 @@ function loadUser(key) {
     currentUser = JSON.parse(userData);
     levelCompleted = currentUser.completedLevels || {};
     
-    // Vérification Adblock
-    checkAdblock();
+    console.log("Utilisateur chargé : " + currentUser.key);
+    checkAdblockSecurity();
 }
 
 // ------------------------------------------------------------------------------
-// 4. DÉTECTION ADBLOCK (VERSION CORRIGÉE POUR ÉVITER LES BLOCAGES)
+// 4. SÉCURITÉ ADBLOCK (BYPASS STABLE)
 // ------------------------------------------------------------------------------
-function checkAdblock() {
-    const testAd = document.createElement('div');
-    testAd.innerHTML = '&nbsp;';
-    testAd.className = 'adsbox';
-    testAd.style.position = 'absolute';
-    testAd.style.left = '-1000px';
-    document.body.appendChild(testAd);
+function checkAdblockSecurity() {
+    const adTestContainer = document.createElement('div');
+    adTestContainer.innerHTML = '&nbsp;';
+    adTestContainer.className = 'adsbox ad-zone ad-space banner-ads';
+    adTestContainer.style.position = 'absolute';
+    adTestContainer.style.left = '-5000px';
+    adTestContainer.style.top = '-5000px';
+    document.body.appendChild(adTestContainer);
     
+    // Petit délai pour laisser au navigateur le temps de bloquer l'élément
     setTimeout(() => {
-        const isBlocked = testAd.offsetHeight === 0;
-        document.body.removeChild(testAd);
+        const isBlocked = adTestContainer.offsetHeight === 0 || adTestContainer.clientHeight === 0;
+        document.body.removeChild(adTestContainer);
         
-        // Correction : On détecte mais on force l'entrée au jeu
         if (isBlocked) {
-            console.warn("Navigateur restrictif détecté. Accès forcé.");
+            console.log("Système : Bloqueur détecté. Bypass en cours...");
         }
         
-        // On cache l'écran d'alerte et on lance le jeu dans tous les cas
-        document.getElementById('adblockWarning').classList.add('hidden');
-        showGameScreen();
+        // CORRECTION : On ignore le résultat du test pour ne jamais bloquer l'utilisateur
+        const warning = document.getElementById('adblockWarning');
+        if(warning) warning.classList.add('hidden');
         
-    }, 150);
+        launchGameInterface();
+    }, 200);
 }
 
 // ------------------------------------------------------------------------------
-// 5. MOTEUR DE JEU (GAMEPLAY)
+// 5. MOTEUR DE JEU (LOGIQUE DU COLOR TEST)
 // ------------------------------------------------------------------------------
 
-function showGameScreen() {
+function launchGameInterface() {
     document.getElementById('authScreen').classList.remove('active');
     document.getElementById('gameScreen').classList.add('active');
     document.getElementById('adminPanel').classList.remove('active');
-    document.getElementById('userKeyDisplay').textContent = currentUser.key;
-    updatePointsDisplay();
-    startLevel(1);
+    
+    const keyDisp = document.getElementById('userKeyDisplay');
+    if(keyDisp) keyDisp.textContent = currentUser.key;
+    
+    refreshUI();
+    generateNewLevel(1);
 }
 
-function startLevel(level) {
+function generateNewLevel(level) {
     currentLevel = level;
     document.getElementById('currentLevel').textContent = level;
     document.getElementById('currentStreak').textContent = currentStreak;
-    document.getElementById('gameStatus').textContent = 'Trouvez la couleur différente !';
     
-    generateColorGrid(level);
+    const statusText = document.getElementById('gameStatus');
+    if(statusText) statusText.textContent = "Niveau " + level + " : Trouvez la case unique !";
+    
+    renderGrid(level);
 }
 
-function generateColorGrid(level) {
+function renderGrid(level) {
     const grid = document.getElementById('gameGrid');
+    if(!grid) return;
     grid.innerHTML = '';
     
-    // Calcul de la difficulté (l'écart de couleur diminue)
-    const difficulty = Math.max(1, 51 - (level * 4));
+    // Difficulté progressive : l'écart diminue à chaque niveau
+    const gap = Math.max(1, 52 - (level * 4));
     
-    const baseColor = {
-        r: Math.floor(Math.random() * 200),
-        g: Math.floor(Math.random() * 200),
-        b: Math.floor(Math.random() * 200)
-    };
+    const r = Math.floor(Math.random() * 200);
+    const g = Math.floor(Math.random() * 200);
+    const b = Math.floor(Math.random() * 200);
     
     correctIndex = Math.floor(Math.random() * 9);
     
     for (let i = 0; i < 9; i++) {
-        const box = document.createElement('div');
-        box.className = 'color-box';
+        const tile = document.createElement('div');
+        tile.className = 'color-box tile-animation';
         
         if (i === correctIndex) {
-            box.style.backgroundColor = `rgb(${baseColor.r + difficulty}, ${baseColor.g + difficulty}, ${baseColor.b + difficulty})`;
+            // La case à trouver est légèrement plus claire
+            tile.style.backgroundColor = `rgb(${r + gap}, ${g + gap}, ${b + gap})`;
         } else {
-            box.style.backgroundColor = `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})`;
+            tile.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
         }
         
-        box.onclick = () => checkAnswer(i);
-        grid.appendChild(box);
+        tile.onclick = () => processChoice(i);
+        grid.appendChild(tile);
     }
 }
 
-function checkAnswer(index) {
+function processChoice(index) {
     if (index === correctIndex) {
         currentStreak++;
         
-        // Gain de points : 5 pour un nouveau niveau, 2 si déjà fait
-        let gain = levelCompleted[currentLevel] ? 2 : 5;
+        // Attribution des Coins (Points)
+        let rewardAmount = levelCompleted[currentLevel] ? 2 : 5;
         
         if (!levelCompleted[currentLevel]) {
             levelCompleted[currentLevel] = true;
             currentUser.completedLevels = levelCompleted;
         }
         
-        currentUser.points += gain;
-        updatePointsDisplay();
-        saveUser();
+        currentUser.points += rewardAmount;
+        if (currentLevel > currentUser.maxLevel) currentUser.maxLevel = currentLevel;
         
-        // Modal de vérification tous les 5 niveaux (Simule une pub)
+        refreshUI();
+        syncUserToStorage();
+        
+        // Vérification toutes les 5 victoires d'affilée
         if (currentStreak > 0 && currentStreak % 5 === 0) {
-            setTimeout(() => showRewardCheck(), 400);
+            setTimeout(() => triggerAntiBotModal(), 300);
         } else {
-            setTimeout(() => startLevel(currentLevel + 1), 600);
+            setTimeout(() => generateNewLevel(currentLevel + 1), 500);
         }
     } else {
-        alert('Erreur ! Retour au niveau 1.');
-        currentLevel = 1;
-        currentStreak = 0;
-        startLevel(1);
+        triggerGameOver();
     }
 }
 
-function showRewardCheck() {
-    document.getElementById('rewardCheckModal').classList.remove('hidden');
+function triggerGameOver() {
+    alert('Dommage ! Votre vision vous a trompé.\nRetour au niveau 1.');
+    currentLevel = 1;
+    currentStreak = 0;
+    generateNewLevel(1);
+}
+
+function triggerAntiBotModal() {
+    const modal = document.getElementById('rewardCheckModal');
+    if(modal) modal.classList.remove('hidden');
 }
 
 function validateProgress() {
     document.getElementById('rewardCheckModal').classList.add('hidden');
-    startLevel(currentLevel + 1);
+    generateNewLevel(currentLevel + 1);
 }
 
-function updatePointsDisplay() {
-    document.getElementById('userPoints').textContent = currentUser.points;
+function refreshUI() {
+    const ptsDisp = document.getElementById('userPoints');
+    if(ptsDisp) ptsDisp.textContent = currentUser.points;
 }
 
-function saveUser() {
+function syncUserToStorage() {
     localStorage.setItem(currentUser.key, JSON.stringify(currentUser));
 }
 
 // ------------------------------------------------------------------------------
-// 6. SYSTÈME DE BOUTIQUE (PAYPAL & ROBUX)
+// 6. SYSTÈME DE BOUTIQUE : PAYPAL & ROBUX (LOGIQUE D'ENVOI)
 // ------------------------------------------------------------------------------
 
-function showRewards() {
+function openBoutique() {
     const modal = document.getElementById('rewardsModal');
-    const rewardsList = document.getElementById('rewardsList');
+    const container = document.getElementById('rewardsList');
     
-    const stock = JSON.parse(localStorage.getItem('rewardStock'));
-    const deletedIds = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
+    const stockData = JSON.parse(localStorage.getItem('rewardStock'));
+    const hiddenOffers = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
     
-    // LISTE DES OFFRES
-    const shopItems = [
-        { id: 'paypal_050', name: 'PayPal 0.50€', points: 5000, type: 'money' },
-        { id: 'paypal_100', name: 'PayPal 1.00€', points: 10000, type: 'money' },
-        { id: 'robux_15', name: '15 Robux', points: 15000, type: 'robux' },
-        { id: 'robux_40', name: '40 Robux', points: 40000, type: 'robux' }
+    // DÉFINITION DES OFFRES (Prix demandés par l'utilisateur)
+    const activeOffers = [
+        { id: 'paypal_050', name: 'PayPal 0.50€', cost: 5000, desc: 'Argent envoyé par Email' },
+        { id: 'paypal_100', name: 'PayPal 1.00€', cost: 10000, desc: 'Argent envoyé par Email' },
+        { id: 'paypal_500', name: 'PayPal 5.00€', cost: 50000, desc: 'Argent envoyé par Email' },
+        { id: 'robux_15', name: '15 Robux', cost: 15000, desc: 'Achat de votre Game Pass' },
+        { id: 'robux_40', name: '40 Robux', cost: 40000, desc: 'Achat de votre Game Pass' },
+        { id: 'robux_100', name: '100 Robux', cost: 100000, desc: 'Achat de votre Game Pass' }
     ];
     
-    const activeItems = shopItems.filter(item => !deletedIds.includes(item.id));
+    // Filtrage des offres masquées par l'admin
+    const listToDisplay = activeOffers.filter(off => !hiddenOffers.includes(off.id));
     
-    rewardsList.innerHTML = '';
+    container.innerHTML = '';
     
-    activeItems.forEach(item => {
-        const itemStock = stock[item.id] || { codes: [] };
-        const available = itemStock.codes.length;
-        
+    listToDisplay.forEach(item => {
+        const currentStock = stockData[item.id] ? stockData[item.id].codes.length : 0;
         const card = document.createElement('div');
-        const canBuy = currentUser.points >= item.points && available > 0;
+        const canAfford = currentUser.points >= item.cost && currentStock > 0;
         
-        card.className = `reward-card ${!canBuy ? 'unavailable' : ''}`;
+        card.className = `reward-card ${!canAfford ? 'unavailable' : 'available-glow'}`;
         card.innerHTML = `
-            <div class="reward-name">${item.name}</div>
-            <div class="reward-points">${item.points} Coins</div>
-            <div class="reward-stock">Stock: ${available}</div>
+            <div class="reward-content">
+                <div class="reward-name">${item.name}</div>
+                <div class="reward-desc">${item.desc}</div>
+                <div class="reward-cost">${item.cost} Coins</div>
+                <div class="reward-stock-label">En Stock: ${currentStock}</div>
+            </div>
         `;
         
-        if (canBuy) card.onclick = () => selectReward(item);
-        rewardsList.appendChild(card);
+        if (canAfford) {
+            card.onclick = () => prepareWithdrawal(item);
+        }
+        container.appendChild(card);
     });
     
     document.getElementById('withdrawFormCard').style.display = 'none';
     modal.classList.remove('hidden');
 }
 
-let selectedReward = null;
+let pendingReward = null;
 
-function selectReward(reward) {
-    selectedReward = reward;
+function prepareWithdrawal(reward) {
+    pendingReward = reward;
+    
     document.getElementById('selectedRewardName').value = reward.name;
-    document.getElementById('withdrawPoints').value = reward.points + ' Coins';
+    document.getElementById('withdrawPoints').value = reward.cost + " Coins";
     
-    const input = document.getElementById('withdrawEmail');
+    const inputArea = document.getElementById('withdrawEmail');
+    const labelArea = document.querySelector('label[for="withdrawEmail"]');
     
-    // Logique de saisie dynamique
+    // CHANGEMENT DYNAMIQUE : MAIL PAYPAL OU GAMEPASS ROBLOX
     if (reward.id.includes('paypal')) {
-        input.placeholder = "Entrez votre EMAIL PayPal";
-        document.querySelector('label[for="withdrawEmail"]').textContent = "Votre Email PayPal :";
-    } else {
-        input.placeholder = "Lien de votre Game Pass Roblox";
-        document.querySelector('label[for="withdrawEmail"]').textContent = "Lien du Game Pass :";
+        labelArea.textContent = "Adresse Email PayPal :";
+        inputArea.placeholder = "exemple@mail.com";
+    } else if (reward.id.includes('robux')) {
+        labelArea.textContent = "Lien de votre Game Pass Roblox :";
+        inputArea.placeholder = "https://www.roblox.com/game-pass/...";
     }
     
-    document.getElementById('withdrawFormCard').style.display = 'block';
+    const form = document.getElementById('withdrawFormCard');
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth' });
 }
 
 function submitWithdraw() {
-    if (!selectedReward) return;
+    if (!pendingReward) return;
     
-    const userInput = document.getElementById('withdrawEmail').value.trim();
+    const coordonnees = document.getElementById('withdrawEmail').value.trim();
     
-    // Validation des entrées
-    if (selectedReward.id.includes('paypal') && !userInput.includes('@')) {
-        return alert('Veuillez entrer une adresse email valide !');
+    // Validation stricte PayPal
+    if (pendingReward.id.includes('paypal') && !coordonnees.includes('@')) {
+        return alert('Erreur : Veuillez entrer un Email PayPal valide.');
     }
     
-    if (selectedReward.id.includes('robux') && !userInput.includes('roblox.com')) {
-        return alert('Veuillez coller un lien Game Pass valide (Roblox.com) !');
+    // Validation stricte Robux
+    if (pendingReward.id.includes('robux') && !coordonnees.includes('roblox.com')) {
+        return alert('Erreur : Veuillez entrer un lien de Game Pass Roblox valide.');
     }
     
-    if (currentUser.points < selectedReward.points) return alert('Points insuffisants !');
+    if (currentUser.points < pendingReward.cost) {
+        return alert('Coins insuffisants pour ce retrait.');
+    }
     
-    const stock = JSON.parse(localStorage.getItem('rewardStock'));
-    const rStock = stock[selectedReward.id];
+    const globalStock = JSON.parse(localStorage.getItem('rewardStock'));
+    const specificStock = globalStock[pendingReward.id];
     
-    if (!rStock || rStock.codes.length === 0) return alert('Désolé, plus de stock !');
+    if (!specificStock || specificStock.codes.length === 0) {
+        return alert('Rupture de stock momentanée !');
+    }
 
-    // Retrait du stock
-    const deliveredCode = rStock.codes.shift();
-    localStorage.setItem('rewardStock', JSON.stringify(stock));
+    // TRAITEMENT DU RETRAIT
+    const rewardCode = specificStock.codes.shift();
+    localStorage.setItem('rewardStock', JSON.stringify(globalStock));
     
-    // Déduction des points
-    currentUser.points -= selectedReward.points;
-    saveUser();
-    updatePointsDisplay();
+    // Mise à jour points utilisateur
+    currentUser.points -= pendingReward.cost;
+    syncUserToStorage();
+    refreshUI();
     
-    // Historique
+    // Enregistrement dans l'historique admin
     const history = JSON.parse(localStorage.getItem('withdrawalHistory'));
     history.push({
-        user: currentUser.key,
-        reward: selectedReward.name,
-        info: userInput,
-        code: deliveredCode,
-        date: Date.now()
+        id: Date.now(),
+        userKey: currentUser.key,
+        reward: pendingReward.name,
+        target: coordonnees,
+        codeProvided: rewardCode,
+        status: "Validé",
+        date: new Date().toLocaleString()
     });
     localStorage.setItem('withdrawalHistory', JSON.stringify(history));
     
-    alert(`DEMANDE ENVOYÉE !\n\nRécompense : ${selectedReward.name}\nDestinataire : ${userInput}\n\nNote : Votre code/lien a été enregistré.`);
+    alert(`FÉLICITATIONS !\n\nRécompense : ${pendingReward.name}\nEnvoyé à : ${coordonnees}\nVotre transaction est enregistrée.`);
     
     document.getElementById('withdrawFormCard').style.display = 'none';
-    showRewards();
+    openBoutique(); // Refresh boutique
 }
 
 // ------------------------------------------------------------------------------
-// 7. DASHBOARD ADMIN
+// 7. PANEL ADMINISTRATEUR (GESTION ET STATISTIQUES)
 // ------------------------------------------------------------------------------
 
 function showAdminPanel() {
     document.getElementById('authScreen').classList.remove('active');
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('adminPanel').classList.add('active');
-    loadAdminData();
+    updateAdminStats();
 }
 
-function loadAdminData() {
-    let totalUsers = 0;
-    let totalPoints = 0;
+function updateAdminStats() {
+    let uCount = 0;
+    let pTotal = 0;
+    
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key.startsWith('KEY-')) {
-            totalUsers++;
-            totalPoints += JSON.parse(localStorage.getItem(key)).points || 0;
+            uCount++;
+            const d = JSON.parse(localStorage.getItem(key));
+            pTotal += d.points || 0;
         }
     }
-    document.getElementById('totalUsers').textContent = totalUsers;
-    document.getElementById('totalPoints').textContent = totalPoints;
-    loadUsersList();
-    loadStockList();
+    
+    const totalUsersEl = document.getElementById('totalUsers');
+    const totalPointsEl = document.getElementById('totalPoints');
+    
+    if(totalUsersEl) totalUsersEl.textContent = uCount;
+    if(totalPointsEl) totalPointsEl.textContent = pTotal.toLocaleString();
+    
+    renderAdminUserList();
+    renderAdminStockManager();
 }
 
-function loadUsersList() {
+function renderAdminUserList() {
     const list = document.getElementById('usersList');
+    if(!list) return;
     list.innerHTML = '';
+    
+    const allUsers = [];
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key.startsWith('KEY-')) {
-            const u = JSON.parse(localStorage.getItem(key));
-            const div = document.createElement('div');
-            div.className = 'admin-item';
-            div.innerHTML = `<strong>${u.key}</strong> - ${u.points} pts <button onclick="deleteUser('${u.key}')">🗑️</button>`;
-            list.appendChild(div);
-        }
+        if (key.startsWith('KEY-')) allUsers.push(JSON.parse(localStorage.getItem(key)));
     }
-}
-
-function loadStockList() {
-    const list = document.getElementById('stockList');
-    list.innerHTML = '';
-    const stock = JSON.parse(localStorage.getItem('rewardStock'));
     
-    const rewards = [
-        { id: 'paypal_050', name: 'PayPal 0.50€' },
-        { id: 'paypal_100', name: 'PayPal 1.00€' },
-        { id: 'robux_15', name: '15 Robux' },
-        { id: 'robux_40', name: '40 Robux' }
-    ];
+    // Tri par points décroissants
+    allUsers.sort((a, b) => b.points - a.points);
     
-    rewards.forEach(r => {
-        const count = stock[r.id] ? stock[r.id].codes.length : 0;
-        const div = document.createElement('div');
-        div.className = 'admin-item';
-        div.innerHTML = `
-            <strong>${r.name}</strong> (Stock: ${count})<br>
-            <textarea id="add_${r.id}" placeholder="Un code par ligne"></textarea>
-            <button onclick="addStock('${r.id}')">Ajouter</button>
+    allUsers.forEach(u => {
+        const row = document.createElement('div');
+        row.className = 'admin-item';
+        row.innerHTML = `
+            <div class="admin-item-header">
+                <strong>Clé: ${u.key}</strong>
+                <span>${u.points} Coins</span>
+                <button onclick="removeUserAccount('${u.key}')" class="btn-del">🗑️</button>
+            </div>
         `;
-        list.appendChild(div);
+        list.appendChild(row);
     });
 }
 
-function addStock(id) {
-    const val = document.getElementById(`add_${id}`).value.trim();
-    if (!val) return;
-    const newCodes = val.split('\n');
-    const stock = JSON.parse(localStorage.getItem('rewardStock'));
-    if (!stock[id]) stock[id] = { codes: [] };
-    stock[id].codes.push(...newCodes);
-    localStorage.setItem('rewardStock', JSON.stringify(stock));
-    loadStockList();
+function renderAdminStockManager() {
+    const container = document.getElementById('stockList');
+    if(!container) return;
+    container.innerHTML = '';
+    
+    const stockMap = JSON.parse(localStorage.getItem('rewardStock'));
+    const activeIDs = Object.keys(stockMap);
+    
+    activeIDs.forEach(id => {
+        const info = stockMap[id];
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'admin-item stock-config';
+        itemDiv.innerHTML = `
+            <div class="admin-item-header">
+                <strong>${info.name || id}</strong>
+                <span>Stock: ${info.codes.length}</span>
+            </div>
+            <div class="admin-item-info">
+                <textarea id="input_${id}" class="admin-textarea" placeholder="Ajouter des codes ou instructions (1 par ligne)"></textarea>
+                <div class="admin-actions">
+                    <button onclick="pushStock('${id}')" class="btn btn-success">Ajouter</button>
+                    <button onclick="clearStock('${id}')" class="btn btn-secondary">Vider</button>
+                    <button onclick="deleteOffer('${id}')" class="btn btn-logout">Masquer Offre</button>
+                </div>
+            </div>
+        `;
+        container.appendChild(itemDiv);
+    });
 }
 
-function deleteUser(key) {
-    if (confirm('Supprimer cet utilisateur ?')) {
+function pushStock(id) {
+    const area = document.getElementById(`input_${id}`);
+    const lines = area.value.trim().split('\n').filter(l => l.length > 0);
+    
+    if (lines.length === 0) return alert('Veuillez entrer au moins un code.');
+    
+    const db = JSON.parse(localStorage.getItem('rewardStock'));
+    if (!db[id]) db[id] = { codes: [] };
+    db[id].codes.push(...lines);
+    
+    localStorage.setItem('rewardStock', JSON.stringify(db));
+    area.value = '';
+    renderAdminStockManager();
+    alert('Stock mis à jour avec succès.');
+}
+
+function clearStock(id) {
+    if(!confirm('Vider tout le stock pour ' + id + ' ?')) return;
+    const db = JSON.parse(localStorage.getItem('rewardStock'));
+    if(db[id]) db[id].codes = [];
+    localStorage.setItem('rewardStock', JSON.stringify(db));
+    renderAdminStockManager();
+}
+
+function deleteOffer(id) {
+    if(!confirm('Voulez-vous vraiment masquer cette offre de la boutique ?')) return;
+    const deleted = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
+    if(!deleted.includes(id)) deleted.push(id);
+    localStorage.setItem('deletedRewardIds', JSON.stringify(deleted));
+    renderAdminStockManager();
+}
+
+function removeUserAccount(key) {
+    if (confirm(`Action Irréversible : Supprimer le compte ${key} ?`)) {
         localStorage.removeItem(key);
-        loadAdminData();
+        updateAdminStats();
     }
+}
+
+// ------------------------------------------------------------------------------
+// 8. NAVIGATION ET UTILITAIRES MODAUX
+// ------------------------------------------------------------------------------
+
+function showAdminTab(name) {
+    const tabs = document.querySelectorAll('.admin-tab-content');
+    const buttons = document.querySelectorAll('.admin-tab');
+    
+    tabs.forEach(t => t.classList.remove('active'));
+    buttons.forEach(b => b.classList.remove('active'));
+    
+    const activeTab = document.getElementById(name + 'Tab');
+    if(activeTab) activeTab.classList.add('active');
+    
+    if (name === 'users') renderAdminUserList();
+    if (name === 'stock') renderAdminStockManager();
+    if (name === 'rewards') renderGlobalHistory();
+}
+
+function renderGlobalHistory() {
+    const historyList = document.getElementById('rewardRequestsList');
+    const data = JSON.parse(localStorage.getItem('withdrawalHistory')) || [];
+    
+    historyList.innerHTML = '';
+    
+    if(data.length === 0) {
+        historyList.innerHTML = "<p style='text-align:center;color:gray;'>Aucune demande de retrait.</p>";
+        return;
+    }
+
+    data.reverse().forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'admin-item';
+        item.innerHTML = `
+            <div style="font-size:0.9em; margin-bottom:5px; color:#aaa;">${entry.date}</div>
+            <div>Utilisateur: <strong>${entry.userKey}</strong></div>
+            <div>Offre: <span style="color:#00e5ff;">${entry.reward}</span></div>
+            <div>Cible: <strong>${entry.target}</strong></div>
+            <div style="color:#00ff88;">Code/Instruction: ${entry.codeProvided}</div>
+        `;
+        historyList.appendChild(item);
+    });
 }
 
 function closeRewards() {
@@ -474,9 +606,31 @@ function closeRewards() {
 }
 
 function logout() {
-    location.reload();
+    if (confirm('Se déconnecter de la session actuelle ?')) {
+        location.reload();
+    }
 }
 
-window.onload = () => {
-    document.getElementById('authScreen').classList.add('active');
+// ------------------------------------------------------------------------------
+// 9. INITIALISATION FINALE AU CHARGEMENT DE LA PAGE
+// ------------------------------------------------------------------------------
+window.onload = function() {
+    console.log("Système Chargé à 100%");
+    
+    // Force l'affichage de l'écran d'accueil
+    const auth = document.getElementById('authScreen');
+    const game = document.getElementById('gameScreen');
+    const admin = document.getElementById('adminPanel');
+    
+    if(auth) auth.classList.add('active');
+    if(game) game.classList.remove('active');
+    if(admin) admin.classList.remove('active');
 };
+
+/**
+ * FIN DU SCRIPT - COLOR VISION TEST
+ * ------------------------------------------------------------------------------
+ * Ce code est conçu pour être intégré dans un environnement HTML5/CSS3.
+ * Il gère la persistance des données via LocalStorage.
+ * ------------------------------------------------------------------------------
+ */
