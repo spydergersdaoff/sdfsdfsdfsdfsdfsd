@@ -1,15 +1,4 @@
-/**
- * ==============================================================================
- * PROJET : COLOR VISION TEST - REWARDS SYSTEM (ULTRA VERSION)
- * VERSION : 4.0.0
- * SECTIONS : AUTH, GAMEPLAY, BOUTIQUE, ADMIN, ANALYTICS
- * TOTAL ESTIMÉ : ~700 LIGNES DE CODE AVEC STRUCTURE ÉTENDUE
- * ==============================================================================
- */
-
-// ------------------------------------------------------------------------------
-// 1. ÉTAT GLOBAL ET VARIABLES DE SESSION
-// ------------------------------------------------------------------------------
+// Game State
 let currentUser = null;
 let currentLevel = 1;
 let currentStreak = 0;
@@ -17,126 +6,112 @@ let correctIndex = 0;
 let levelCompleted = {};
 let validationsPending = 0;
 let isAdmin = false;
-let sessionStartTime = Date.now();
 
-// Sécurité Admin
 const ADMIN_PASSWORD = '1772';
 
-// ------------------------------------------------------------------------------
-// 2. MOTEUR DE STOCKAGE ET BASE DE DONNÉES LOCALE
-// ------------------------------------------------------------------------------
-function initializeFullDatabase() {
-    console.log("%c Initialisation de la Base de Données...", "color: #8a2be2; font-weight: bold;");
-
-    // Initialisation du Stock (Strictement PayPal et Robux)
-    if (!localStorage.getItem('rewardStock')) {
-        const initialStock = {
-            'paypal_050': { quantity: 0, codes: [], name: "PayPal 0.50€" },
-            'paypal_100': { quantity: 0, codes: [], name: "PayPal 1.00€" },
-            'paypal_500': { quantity: 0, codes: [], name: "PayPal 5.00€" },
-            'robux_15': { quantity: 0, codes: [], name: "15 Robux" },
-            'robux_40': { quantity: 0, codes: [], name: "40 Robux" },
-            'robux_100': { quantity: 0, codes: [], name: "100 Robux" }
-        };
-        localStorage.setItem('rewardStock', JSON.stringify(initialStock));
-    }
-
-    // Récompenses personnalisées injectées par l'admin
-    if (!localStorage.getItem('customRewards')) {
-        localStorage.setItem('customRewards', JSON.stringify([]));
-    }
-
-    // IDs supprimés pour nettoyer la boutique (Anciennes offres)
-    if (!localStorage.getItem('deletedRewardIds')) {
-        const oldLegacy = ['microsoft', 'amazon', 'steam', 'googleplay'];
-        localStorage.setItem('deletedRewardIds', JSON.stringify(oldLegacy));
-    }
-
-    // Historique global des transactions utilisateur
-    if (!localStorage.getItem('withdrawalHistory')) {
-        localStorage.setItem('withdrawalHistory', JSON.stringify([]));
-    }
-    
-    console.log("%c Base de Données Prête !", "color: #00ff88; font-weight: bold;");
+// Initialize stock in localStorage if not exists
+if (!localStorage.getItem('rewardStock')) {
+    const initialStock = {
+        'microsoft': { quantity: 0, codes: [] },
+        'amazon': { quantity: 0, codes: [] },
+        'paypal': { quantity: 0, codes: [] },
+        'steam': { quantity: 0, codes: [] },
+        'googleplay': { quantity: 0, codes: [] }
+    };
+    localStorage.setItem('rewardStock', JSON.stringify(initialStock));
 }
 
-initializeFullDatabase();
+// Initialize custom rewards
+if (!localStorage.getItem('customRewards')) {
+    localStorage.setItem('customRewards', JSON.stringify([]));
+}
 
-// ------------------------------------------------------------------------------
-// 3. SYSTÈME D'AUTHENTIFICATION AVANCÉ
-// ------------------------------------------------------------------------------
+// --- AJOUT : Initialisation des IDs supprimés ---
+if (!localStorage.getItem('deletedRewardIds')) {
+    localStorage.setItem('deletedRewardIds', JSON.stringify([]));
+}
 
-function generateUniqueKey() {
+// Initialize withdrawal history
+if (!localStorage.getItem('withdrawalHistory')) {
+    localStorage.setItem('withdrawalHistory', JSON.stringify([]));
+}
+
+// Generate random key
+function generateKey() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let key = 'KEY-';
-    for (let i = 0; i < 10; i++) { // Clé légèrement plus longue pour la sécurité
+    for (let i = 0; i < 8; i++) {
         key += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return key;
 }
 
+// Show create account form
 function showCreateAccount() {
-    const loginForm = document.getElementById('loginForm');
-    const createForm = document.getElementById('createAccountForm');
-    if(loginForm) loginForm.classList.add('hidden');
-    if(createForm) createForm.classList.remove('hidden');
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('createAccountForm').classList.remove('hidden');
     document.getElementById('keyDisplay').classList.add('hidden');
 }
 
+// Show login form
 function showLogin() {
-    const loginForm = document.getElementById('loginForm');
-    const createForm = document.getElementById('createAccountForm');
-    if(createForm) createForm.classList.add('hidden');
-    if(loginForm) loginForm.classList.remove('hidden');
+    document.getElementById('createAccountForm').classList.add('hidden');
+    document.getElementById('loginForm').classList.remove('hidden');
     document.getElementById('keyDisplay').classList.add('hidden');
 }
 
+// Create account
 function createAccount() {
-    const key = generateUniqueKey();
-    const newUser = {
+    const key = generateKey();
+    const user = {
         key: key,
         points: 0,
-        maxLevel: 1,
+        maxLevel: 0,
         completedLevels: {},
-        createdAt: new Date().toISOString(),
-        totalGamesPlayed: 0,
-        isVerified: true
+        createdAt: Date.now()
     };
     
-    localStorage.setItem(key, JSON.stringify(newUser));
+    // Save to localStorage
+    localStorage.setItem(key, JSON.stringify(user));
     
+    // Display key
     document.getElementById('generatedKey').textContent = key;
     document.getElementById('createAccountForm').classList.add('hidden');
     document.getElementById('keyDisplay').classList.remove('hidden');
 }
 
+// Continue to game after account creation
 function continueToGame() {
     const key = document.getElementById('generatedKey').textContent;
     loadUser(key);
 }
 
+// Login
 function login() {
-    const rawInput = document.getElementById('keyInput').value;
-    const input = rawInput ? rawInput.trim() : "";
+    const input = document.getElementById('keyInput').value.trim();
     
     if (!input) {
-        alert('Action requise : Veuillez entrer votre clé d\'accès.');
+        alert('Veuillez entrer votre clé ou mot de passe!');
         return;
     }
     
-    // Vérification de l'accès Administrateur
+    // Check if admin password
     if (input === ADMIN_PASSWORD) {
         isAdmin = true;
-        console.warn("Accès Admin détecté.");
         showAdminPanel();
         return;
     }
     
     const key = input.toUpperCase();
-    const userData = localStorage.getItem(key);
     
+    if (!key.startsWith('KEY-')) {
+        alert('Format de clé invalide! La clé doit commencer par KEY- ou utilisez le mot de passe admin.');
+        return;
+    }
+    
+    const userData = localStorage.getItem(key);
     if (!userData) {
-        alert('Erreur : Cette clé n\'existe pas dans notre base de données.');
+        alert('Clé invalide! Aucun compte trouvé.');
         return;
     }
     
@@ -144,493 +119,635 @@ function login() {
     loadUser(key);
 }
 
+// Load user
 function loadUser(key) {
     const userData = localStorage.getItem(key);
-    if (!userData) return;
+    if (!userData) {
+        alert('Erreur de chargement du compte');
+        return;
+    }
     
     currentUser = JSON.parse(userData);
     levelCompleted = currentUser.completedLevels || {};
     
-    console.log("Utilisateur chargé : " + currentUser.key);
-    checkAdblockSecurity();
+    // Check for adblock before showing game
+    checkAdblock();
 }
 
-// ------------------------------------------------------------------------------
-// 4. SÉCURITÉ ADBLOCK (BYPASS STABLE)
-// ------------------------------------------------------------------------------
-function checkAdblockSecurity() {
-    const adTestContainer = document.createElement('div');
-    adTestContainer.innerHTML = '&nbsp;';
-    adTestContainer.className = 'adsbox ad-zone ad-space banner-ads';
-    adTestContainer.style.position = 'absolute';
-    adTestContainer.style.left = '-5000px';
-    adTestContainer.style.top = '-5000px';
-    document.body.appendChild(adTestContainer);
+// Check AdBlock
+function checkAdblock() {
+    const testAd = document.createElement('div');
+    testAd.innerHTML = '&nbsp;';
+    testAd.className = 'adsbox';
+    testAd.style.position = 'absolute';
+    testAd.style.left = '-1000px';
+    document.body.appendChild(testAd);
     
-    // Petit délai pour laisser au navigateur le temps de bloquer l'élément
     setTimeout(() => {
-        const isBlocked = adTestContainer.offsetHeight === 0 || adTestContainer.clientHeight === 0;
-        document.body.removeChild(adTestContainer);
+        const isBlocked = testAd.offsetHeight === 0;
+        document.body.removeChild(testAd);
         
         if (isBlocked) {
-            console.log("Système : Bloqueur détecté. Bypass en cours...");
+            document.getElementById('adblockWarning').classList.remove('hidden');
+        } else {
+            document.getElementById('adblockWarning').classList.add('hidden');
+            showGameScreen();
         }
-        
-        // CORRECTION : On ignore le résultat du test pour ne jamais bloquer l'utilisateur
-        const warning = document.getElementById('adblockWarning');
-        if(warning) warning.classList.add('hidden');
-        
-        launchGameInterface();
-    }, 200);
+    }, 100);
 }
 
-// ------------------------------------------------------------------------------
-// 5. MOTEUR DE JEU (LOGIQUE DU COLOR TEST)
-// ------------------------------------------------------------------------------
-
-function launchGameInterface() {
+// Show game screen
+function showGameScreen() {
     document.getElementById('authScreen').classList.remove('active');
     document.getElementById('gameScreen').classList.add('active');
     document.getElementById('adminPanel').classList.remove('active');
-    
-    const keyDisp = document.getElementById('userKeyDisplay');
-    if(keyDisp) keyDisp.textContent = currentUser.key;
-    
-    refreshUI();
-    generateNewLevel(1);
+    document.getElementById('userKeyDisplay').textContent = currentUser.key;
+    updatePointsDisplay();
+    startLevel(1);
 }
 
-function generateNewLevel(level) {
-    currentLevel = level;
-    document.getElementById('currentLevel').textContent = level;
-    document.getElementById('currentStreak').textContent = currentStreak;
-    
-    const statusText = document.getElementById('gameStatus');
-    if(statusText) statusText.textContent = "Niveau " + level + " : Trouvez la case unique !";
-    
-    renderGrid(level);
-}
-
-function renderGrid(level) {
-    const grid = document.getElementById('gameGrid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    
-    // Difficulté progressive : l'écart diminue à chaque niveau
-    const gap = Math.max(1, 52 - (level * 4));
-    
-    const r = Math.floor(Math.random() * 200);
-    const g = Math.floor(Math.random() * 200);
-    const b = Math.floor(Math.random() * 200);
-    
-    correctIndex = Math.floor(Math.random() * 9);
-    
-    for (let i = 0; i < 9; i++) {
-        const tile = document.createElement('div');
-        tile.className = 'color-box tile-animation';
-        
-        if (i === correctIndex) {
-            // La case à trouver est légèrement plus claire
-            tile.style.backgroundColor = `rgb(${r + gap}, ${g + gap}, ${b + gap})`;
-        } else {
-            tile.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-        }
-        
-        tile.onclick = () => processChoice(i);
-        grid.appendChild(tile);
-    }
-}
-
-function processChoice(index) {
-    if (index === correctIndex) {
-        currentStreak++;
-        
-        // Attribution des Coins (Points)
-        let rewardAmount = levelCompleted[currentLevel] ? 2 : 5;
-        
-        if (!levelCompleted[currentLevel]) {
-            levelCompleted[currentLevel] = true;
-            currentUser.completedLevels = levelCompleted;
-        }
-        
-        currentUser.points += rewardAmount;
-        if (currentLevel > currentUser.maxLevel) currentUser.maxLevel = currentLevel;
-        
-        refreshUI();
-        syncUserToStorage();
-        
-        // Vérification toutes les 5 victoires d'affilée
-        if (currentStreak > 0 && currentStreak % 5 === 0) {
-            setTimeout(() => triggerAntiBotModal(), 300);
-        } else {
-            setTimeout(() => generateNewLevel(currentLevel + 1), 500);
-        }
-    } else {
-        triggerGameOver();
-    }
-}
-
-function triggerGameOver() {
-    alert('Dommage ! Votre vision vous a trompé.\nRetour au niveau 1.');
-    currentLevel = 1;
-    currentStreak = 0;
-    generateNewLevel(1);
-}
-
-function triggerAntiBotModal() {
-    const modal = document.getElementById('rewardCheckModal');
-    if(modal) modal.classList.remove('hidden');
-}
-
-function validateProgress() {
-    document.getElementById('rewardCheckModal').classList.add('hidden');
-    generateNewLevel(currentLevel + 1);
-}
-
-function refreshUI() {
-    const ptsDisp = document.getElementById('userPoints');
-    if(ptsDisp) ptsDisp.textContent = currentUser.points;
-}
-
-function syncUserToStorage() {
-    localStorage.setItem(currentUser.key, JSON.stringify(currentUser));
-}
-
-// ------------------------------------------------------------------------------
-// 6. SYSTÈME DE BOUTIQUE : PAYPAL & ROBUX (LOGIQUE D'ENVOI)
-// ------------------------------------------------------------------------------
-
-function openBoutique() {
-    const modal = document.getElementById('rewardsModal');
-    const container = document.getElementById('rewardsList');
-    
-    const stockData = JSON.parse(localStorage.getItem('rewardStock'));
-    const hiddenOffers = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
-    
-    // DÉFINITION DES OFFRES (Prix demandés par l'utilisateur)
-    const activeOffers = [
-        { id: 'paypal_050', name: 'PayPal 0.50€', cost: 5000, desc: 'Argent envoyé par Email' },
-        { id: 'paypal_100', name: 'PayPal 1.00€', cost: 10000, desc: 'Argent envoyé par Email' },
-        { id: 'paypal_500', name: 'PayPal 5.00€', cost: 50000, desc: 'Argent envoyé par Email' },
-        { id: 'robux_15', name: '15 Robux', cost: 15000, desc: 'Achat de votre Game Pass' },
-        { id: 'robux_40', name: '40 Robux', cost: 40000, desc: 'Achat de votre Game Pass' },
-        { id: 'robux_100', name: '100 Robux', cost: 100000, desc: 'Achat de votre Game Pass' }
-    ];
-    
-    // Filtrage des offres masquées par l'admin
-    const listToDisplay = activeOffers.filter(off => !hiddenOffers.includes(off.id));
-    
-    container.innerHTML = '';
-    
-    listToDisplay.forEach(item => {
-        const currentStock = stockData[item.id] ? stockData[item.id].codes.length : 0;
-        const card = document.createElement('div');
-        const canAfford = currentUser.points >= item.cost && currentStock > 0;
-        
-        card.className = `reward-card ${!canAfford ? 'unavailable' : 'available-glow'}`;
-        card.innerHTML = `
-            <div class="reward-content">
-                <div class="reward-name">${item.name}</div>
-                <div class="reward-desc">${item.desc}</div>
-                <div class="reward-cost">${item.cost} Coins</div>
-                <div class="reward-stock-label">En Stock: ${currentStock}</div>
-            </div>
-        `;
-        
-        if (canAfford) {
-            card.onclick = () => prepareWithdrawal(item);
-        }
-        container.appendChild(card);
-    });
-    
-    document.getElementById('withdrawFormCard').style.display = 'none';
-    modal.classList.remove('hidden');
-}
-
-let pendingReward = null;
-
-function prepareWithdrawal(reward) {
-    pendingReward = reward;
-    
-    document.getElementById('selectedRewardName').value = reward.name;
-    document.getElementById('withdrawPoints').value = reward.cost + " Coins";
-    
-    const inputArea = document.getElementById('withdrawEmail');
-    const labelArea = document.querySelector('label[for="withdrawEmail"]');
-    
-    // CHANGEMENT DYNAMIQUE : MAIL PAYPAL OU GAMEPASS ROBLOX
-    if (reward.id.includes('paypal')) {
-        labelArea.textContent = "Adresse Email PayPal :";
-        inputArea.placeholder = "exemple@mail.com";
-    } else if (reward.id.includes('robux')) {
-        labelArea.textContent = "Lien de votre Game Pass Roblox :";
-        inputArea.placeholder = "https://www.roblox.com/game-pass/...";
-    }
-    
-    const form = document.getElementById('withdrawFormCard');
-    form.style.display = 'block';
-    form.scrollIntoView({ behavior: 'smooth' });
-}
-
-function submitWithdraw() {
-    if (!pendingReward) return;
-    
-    const coordonnees = document.getElementById('withdrawEmail').value.trim();
-    
-    // Validation stricte PayPal
-    if (pendingReward.id.includes('paypal') && !coordonnees.includes('@')) {
-        return alert('Erreur : Veuillez entrer un Email PayPal valide.');
-    }
-    
-    // Validation stricte Robux
-    if (pendingReward.id.includes('robux') && !coordonnees.includes('roblox.com')) {
-        return alert('Erreur : Veuillez entrer un lien de Game Pass Roblox valide.');
-    }
-    
-    if (currentUser.points < pendingReward.cost) {
-        return alert('Coins insuffisants pour ce retrait.');
-    }
-    
-    const globalStock = JSON.parse(localStorage.getItem('rewardStock'));
-    const specificStock = globalStock[pendingReward.id];
-    
-    if (!specificStock || specificStock.codes.length === 0) {
-        return alert('Rupture de stock momentanée !');
-    }
-
-    // TRAITEMENT DU RETRAIT
-    const rewardCode = specificStock.codes.shift();
-    localStorage.setItem('rewardStock', JSON.stringify(globalStock));
-    
-    // Mise à jour points utilisateur
-    currentUser.points -= pendingReward.cost;
-    syncUserToStorage();
-    refreshUI();
-    
-    // Enregistrement dans l'historique admin
-    const history = JSON.parse(localStorage.getItem('withdrawalHistory'));
-    history.push({
-        id: Date.now(),
-        userKey: currentUser.key,
-        reward: pendingReward.name,
-        target: coordonnees,
-        codeProvided: rewardCode,
-        status: "Validé",
-        date: new Date().toLocaleString()
-    });
-    localStorage.setItem('withdrawalHistory', JSON.stringify(history));
-    
-    alert(`FÉLICITATIONS !\n\nRécompense : ${pendingReward.name}\nEnvoyé à : ${coordonnees}\nVotre transaction est enregistrée.`);
-    
-    document.getElementById('withdrawFormCard').style.display = 'none';
-    openBoutique(); // Refresh boutique
-}
-
-// ------------------------------------------------------------------------------
-// 7. PANEL ADMINISTRATEUR (GESTION ET STATISTIQUES)
-// ------------------------------------------------------------------------------
-
+// Show admin panel
 function showAdminPanel() {
     document.getElementById('authScreen').classList.remove('active');
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('adminPanel').classList.add('active');
-    updateAdminStats();
+    
+    loadAdminData();
 }
 
-function updateAdminStats() {
-    let uCount = 0;
-    let pTotal = 0;
+// Load admin data
+function loadAdminData() {
+    // Count users
+    let totalUsers = 0;
+    let totalPoints = 0;
     
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key.startsWith('KEY-')) {
-            uCount++;
-            const d = JSON.parse(localStorage.getItem(key));
-            pTotal += d.points || 0;
+            totalUsers++;
+            const userData = JSON.parse(localStorage.getItem(key));
+            totalPoints += userData.points || 0;
         }
     }
     
-    const totalUsersEl = document.getElementById('totalUsers');
-    const totalPointsEl = document.getElementById('totalPoints');
+    document.getElementById('totalUsers').textContent = totalUsers;
+    document.getElementById('totalPoints').textContent = totalPoints.toLocaleString();
+    document.getElementById('pendingRewards').textContent = getPendingRewards();
     
-    if(totalUsersEl) totalUsersEl.textContent = uCount;
-    if(totalPointsEl) totalPointsEl.textContent = pTotal.toLocaleString();
-    
-    renderAdminUserList();
-    renderAdminStockManager();
+    loadUsersList();
+    loadStockList();
 }
 
-function renderAdminUserList() {
-    const list = document.getElementById('usersList');
-    if(!list) return;
-    list.innerHTML = '';
+// Load users list
+function loadUsersList() {
+    const usersList = document.getElementById('usersList');
+    usersList.innerHTML = '';
     
-    const allUsers = [];
+    const users = [];
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key.startsWith('KEY-')) allUsers.push(JSON.parse(localStorage.getItem(key)));
+        if (key.startsWith('KEY-')) {
+            const userData = JSON.parse(localStorage.getItem(key));
+            users.push(userData);
+        }
     }
     
-    // Tri par points décroissants
-    allUsers.sort((a, b) => b.points - a.points);
+    // Sort by points
+    users.sort((a, b) => b.points - a.points);
     
-    allUsers.forEach(u => {
-        const row = document.createElement('div');
-        row.className = 'admin-item';
-        row.innerHTML = `
+    if (users.length === 0) {
+        usersList.innerHTML = '<p style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">Aucun utilisateur</p>';
+        return;
+    }
+    
+    users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'admin-item';
+        div.innerHTML = `
             <div class="admin-item-header">
-                <strong>Clé: ${u.key}</strong>
-                <span>${u.points} Coins</span>
-                <button onclick="removeUserAccount('${u.key}')" class="btn-del">🗑️</button>
-            </div>
-        `;
-        list.appendChild(row);
-    });
-}
-
-function renderAdminStockManager() {
-    const container = document.getElementById('stockList');
-    if(!container) return;
-    container.innerHTML = '';
-    
-    const stockMap = JSON.parse(localStorage.getItem('rewardStock'));
-    const activeIDs = Object.keys(stockMap);
-    
-    activeIDs.forEach(id => {
-        const info = stockMap[id];
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'admin-item stock-config';
-        itemDiv.innerHTML = `
-            <div class="admin-item-header">
-                <strong>${info.name || id}</strong>
-                <span>Stock: ${info.codes.length}</span>
+                <div class="admin-item-title">${user.key}</div>
+                <button class="btn btn-small btn-logout" onclick="deleteUser('${user.key}')">🗑️ Supprimer</button>
             </div>
             <div class="admin-item-info">
-                <textarea id="input_${id}" class="admin-textarea" placeholder="Ajouter des codes ou instructions (1 par ligne)"></textarea>
-                <div class="admin-actions">
-                    <button onclick="pushStock('${id}')" class="btn btn-success">Ajouter</button>
-                    <button onclick="clearStock('${id}')" class="btn btn-secondary">Vider</button>
-                    <button onclick="deleteOffer('${id}')" class="btn btn-logout">Masquer Offre</button>
-                </div>
+                Points: <strong>${user.points}</strong><br>
+                Niveau Max: <strong>${user.maxLevel}</strong><br>
+                Créé le: <strong>${new Date(user.createdAt).toLocaleString()}</strong>
             </div>
         `;
-        container.appendChild(itemDiv);
+        usersList.appendChild(div);
     });
 }
 
-function pushStock(id) {
-    const area = document.getElementById(`input_${id}`);
-    const lines = area.value.trim().split('\n').filter(l => l.length > 0);
+// Load stock list
+function loadStockList() {
+    const stockList = document.getElementById('stockList');
+    stockList.innerHTML = '';
     
-    if (lines.length === 0) return alert('Veuillez entrer au moins un code.');
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    const customRewards = JSON.parse(localStorage.getItem('customRewards'));
+    const deletedIds = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
     
-    const db = JSON.parse(localStorage.getItem('rewardStock'));
-    if (!db[id]) db[id] = { codes: [] };
-    db[id].codes.push(...lines);
+    // Uniquement PayPal et Robux avec plusieurs montants
+    const defaultRewards = [
+        { id: 'paypal_050', name: 'PayPal 0.50€ (5000 Coins)' },
+        { id: 'paypal_100', name: 'PayPal 1.00€ (10000 Coins)' },
+        { id: 'paypal_500', name: 'PayPal 5.00€ (50000 Coins)' },
+        { id: 'robux_15', name: '15 Robux (15000 Coins)' },
+        { id: 'robux_40', name: '40 Robux (40000 Coins)' },
+        { id: 'robux_100', name: '100 Robux (100000 Coins)' }
+    ];
     
-    localStorage.setItem('rewardStock', JSON.stringify(db));
-    area.value = '';
-    renderAdminStockManager();
-    alert('Stock mis à jour avec succès.');
+    const allRewards = [...defaultRewards, ...customRewards].filter(r => !deletedIds.includes(r.id));
+    
+    allRewards.forEach(reward => {
+        const rewardStock = stock[reward.id] || { quantity: 0, codes: [] };
+        const div = document.createElement('div');
+        div.className = 'admin-item';
+        div.innerHTML = `
+            <div class="admin-item-header">
+                <div class="admin-item-title">${reward.name}</div>
+                <button class="btn btn-small" style="background: #ff4d4d; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;" onclick="deleteReward('${reward.id}')">❌ Retirer</button>
+            </div>
+            <div class="admin-item-info">
+                <strong>Stock: ${rewardStock.codes.length} codes disponibles</strong><br><br>
+                <textarea id="codes_${reward.id}" class="form-input" placeholder="Collez vos codes ou liens ici (un par ligne)..." rows="3" style="width:100%; margin-bottom:5px;"></textarea>
+                <button class="btn btn-small btn-success" onclick="addCodesToStock('${reward.id}')">➕ Ajouter au Stock</button>
+            </div>
+        `;
+        stockList.appendChild(div);
+    });
 }
 
-function clearStock(id) {
-    if(!confirm('Vider tout le stock pour ' + id + ' ?')) return;
-    const db = JSON.parse(localStorage.getItem('rewardStock'));
-    if(db[id]) db[id].codes = [];
-    localStorage.setItem('rewardStock', JSON.stringify(db));
-    renderAdminStockManager();
+// Add codes to stock
+function addCodesToStock(rewardId) {
+    const textarea = document.getElementById(`codes_${rewardId}`);
+    const codesText = textarea.value.trim();
+    
+    if (!codesText) {
+        alert('Veuillez entrer au moins un code ou lien!');
+        return;
+    }
+    
+    const newCodes = codesText.split('\n').filter(code => code.trim() !== '');
+    
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    if (!stock[rewardId]) {
+        stock[rewardId] = { quantity: 0, codes: [] };
+    }
+    
+    stock[rewardId].codes.push(...newCodes);
+    stock[rewardId].quantity = stock[rewardId].codes.length;
+    
+    localStorage.setItem('rewardStock', JSON.stringify(stock));
+    
+    alert(`✅ ${newCodes.length} code(s) ajouté(s) avec succès!`);
+    textarea.value = '';
+    loadStockList();
+    loadAdminData();
 }
 
-function deleteOffer(id) {
-    if(!confirm('Voulez-vous vraiment masquer cette offre de la boutique ?')) return;
-    const deleted = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
-    if(!deleted.includes(id)) deleted.push(id);
-    localStorage.setItem('deletedRewardIds', JSON.stringify(deleted));
-    renderAdminStockManager();
+// View codes
+function viewCodes(rewardId) {
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    const rewardStock = stock[rewardId];
+    
+    if (!rewardStock || rewardStock.codes.length === 0) {
+        alert('Aucun code disponible pour cette récompense.');
+        return;
+    }
+    
+    const codesList = rewardStock.codes.map((code, index) => `${index + 1}. ${code}`).join('\n');
+    alert(`Codes disponibles (${rewardStock.codes.length}):\n\n${codesList}`);
 }
 
-function removeUserAccount(key) {
-    if (confirm(`Action Irréversible : Supprimer le compte ${key} ?`)) {
-        localStorage.removeItem(key);
-        updateAdminStats();
+// Create new reward
+function createNewReward() {
+    const name = document.getElementById('newRewardName').value.trim();
+    const desc = document.getElementById('newRewardDesc').value.trim();
+    const points = parseInt(document.getElementById('newRewardPoints').value);
+    
+    if (!name || !desc || !points) {
+        alert('Veuillez remplir tous les champs!');
+        return;
+    }
+    
+    const customRewards = JSON.parse(localStorage.getItem('customRewards'));
+    const id = 'custom_' + Date.now();
+    
+    customRewards.push({
+        id: id,
+        name: name,
+        desc: desc,
+        points: points
+    });
+    
+    localStorage.setItem('customRewards', JSON.stringify(customRewards));
+    
+    // Initialize stock for this reward
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    stock[id] = { quantity: 0, codes: [] };
+    localStorage.setItem('rewardStock', JSON.stringify(stock));
+    
+    alert('✅ Récompense créée avec succès!');
+    
+    // Clear form
+    document.getElementById('newRewardName').value = '';
+    document.getElementById('newRewardDesc').value = '';
+    document.getElementById('newRewardPoints').value = '';
+    
+    // Switch to stock tab
+    showAdminTab('stock');
+}
+
+// --- MODIFIÉ : Supprime ou Masque une récompense ---
+function deleteReward(rewardId) {
+    if (confirm('Voulez-vous vraiment retirer cette récompense de la boutique ?')) {
+        // 1. Ajouter l'ID à la liste des éléments supprimés (pour masquer les trucs par défaut)
+        const deletedIds = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
+        if (!deletedIds.includes(rewardId)) {
+            deletedIds.push(rewardId);
+            localStorage.setItem('deletedRewardIds', JSON.stringify(deletedIds));
+        }
+
+        // 2. Si c'est un custom, on le retire aussi de la liste custom
+        if (rewardId.startsWith('custom_')) {
+            const customRewards = JSON.parse(localStorage.getItem('customRewards'));
+            const filtered = customRewards.filter(r => r.id !== rewardId);
+            localStorage.setItem('customRewards', JSON.stringify(filtered));
+        }
+        
+        // 3. Nettoyer le stock
+        const stock = JSON.parse(localStorage.getItem('rewardStock'));
+        delete stock[rewardId];
+        localStorage.setItem('rewardStock', JSON.stringify(stock));
+        
+        loadStockList();
+        alert('✅ Récompense retirée !');
     }
 }
 
-// ------------------------------------------------------------------------------
-// 8. NAVIGATION ET UTILITAIRES MODAUX
-// ------------------------------------------------------------------------------
-
-function showAdminTab(name) {
-    const tabs = document.querySelectorAll('.admin-tab-content');
-    const buttons = document.querySelectorAll('.admin-tab');
-    
-    tabs.forEach(t => t.classList.remove('active'));
-    buttons.forEach(b => b.classList.remove('active'));
-    
-    const activeTab = document.getElementById(name + 'Tab');
-    if(activeTab) activeTab.classList.add('active');
-    
-    if (name === 'users') renderAdminUserList();
-    if (name === 'stock') renderAdminStockManager();
-    if (name === 'rewards') renderGlobalHistory();
+// Delete user
+function deleteUser(key) {
+    if (confirm(`Supprimer l'utilisateur ${key}?`)) {
+        localStorage.removeItem(key);
+        loadAdminData();
+    }
 }
 
-function renderGlobalHistory() {
+// Get pending rewards
+function getPendingRewards() {
+    return 0;
+}
+
+// Show admin tab
+function showAdminTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-content').forEach(content => content.classList.remove('active'));
+    
+    event.target.classList.add('active');
+    
+    if (tabName === 'users') {
+        document.getElementById('usersTab').classList.add('active');
+        loadUsersList();
+    } else if (tabName === 'rewards') {
+        document.getElementById('rewardsTab').classList.add('active');
+        loadWithdrawalHistory();
+    } else if (tabName === 'stock') {
+        document.getElementById('stockTab').classList.add('active');
+        loadStockList();
+    } else if (tabName === 'create') {
+        document.getElementById('createTab').classList.add('active');
+    }
+}
+
+// Load withdrawal history for admin
+function loadWithdrawalHistory() {
     const historyList = document.getElementById('rewardRequestsList');
-    const data = JSON.parse(localStorage.getItem('withdrawalHistory')) || [];
+    const history = JSON.parse(localStorage.getItem('withdrawalHistory'));
     
     historyList.innerHTML = '';
     
-    if(data.length === 0) {
-        historyList.innerHTML = "<p style='text-align:center;color:gray;'>Aucune demande de retrait.</p>";
+    if (!history || history.length === 0) {
+        historyList.innerHTML = '<p style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">Aucune demande de retrait</p>';
         return;
     }
-
-    data.reverse().forEach(entry => {
-        const item = document.createElement('div');
-        item.className = 'admin-item';
-        item.innerHTML = `
-            <div style="font-size:0.9em; margin-bottom:5px; color:#aaa;">${entry.date}</div>
-            <div>Utilisateur: <strong>${entry.userKey}</strong></div>
-            <div>Offre: <span style="color:#00e5ff;">${entry.reward}</span></div>
-            <div>Cible: <strong>${entry.target}</strong></div>
-            <div style="color:#00ff88;">Code/Instruction: ${entry.codeProvided}</div>
+    
+    history.sort((a, b) => b.date - a.date);
+    
+    history.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'admin-item';
+        div.innerHTML = `
+            <div class="admin-item-header">
+                <div class="admin-item-title">${item.rewardName}</div>
+                <span class="stock-badge">${item.status === 'completed' ? 'Complété' : 'En attente'}</span>
+            </div>
+            <div class="admin-item-info">
+                Utilisateur: <strong>${item.userKey}</strong><br>
+                Email: <strong>${item.email}</strong><br>
+                Points: <strong>${item.points}</strong><br>
+                Code donné: <strong style="color: #4caf50;">${item.code}</strong><br>
+                Date: <strong>${new Date(item.date).toLocaleString()}</strong>
+            </div>
         `;
-        historyList.appendChild(item);
+        historyList.appendChild(div);
     });
 }
 
+// Update points display
+function updatePointsDisplay() {
+    document.getElementById('userPoints').textContent = currentUser.points;
+}
+
+// Start level
+function startLevel(level) {
+    currentLevel = level;
+    document.getElementById('currentLevel').textContent = level;
+    document.getElementById('currentStreak').textContent = currentStreak;
+    document.getElementById('gameStatus').textContent = '';
+    
+    generateColorGrid(level);
+}
+
+// Generate color grid
+function generateColorGrid(level) {
+    const grid = document.getElementById('gameGrid');
+    grid.innerHTML = '';
+    
+    const difficulty = Math.max(1, 51 - (level * 5));
+    const baseColor = {
+        r: Math.floor(Math.random() * 256),
+        g: Math.floor(Math.random() * 256),
+        b: Math.floor(Math.random() * 256)
+    };
+    
+    correctIndex = Math.floor(Math.random() * 9);
+    
+    for (let i = 0; i < 9; i++) {
+        const box = document.createElement('div');
+        box.className = 'color-box';
+        
+        if (i === correctIndex) {
+            const diffColor = {
+                r: Math.min(255, Math.max(0, baseColor.r + difficulty)),
+                g: Math.min(255, Math.max(0, baseColor.g + difficulty)),
+                b: Math.min(255, Math.max(0, baseColor.b + difficulty))
+            };
+            box.style.backgroundColor = `rgb(${diffColor.r}, ${diffColor.g}, ${diffColor.b})`;
+        } else {
+            box.style.backgroundColor = `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})`;
+        }
+        
+        box.onclick = () => checkAnswer(i);
+        grid.appendChild(box);
+    }
+}
+
+// Check answer
+function checkAnswer(index) {
+    const boxes = document.querySelectorAll('.color-box');
+    const statusDiv = document.getElementById('gameStatus');
+    
+    if (index === correctIndex) {
+        boxes[index].classList.add('correct');
+        statusDiv.textContent = '✓ Correct!';
+        statusDiv.className = 'game-status success';
+        
+        currentStreak++;
+        
+        let points = 0;
+        if (levelCompleted[currentLevel]) {
+            points = 2;
+        } else {
+            points = 5;
+            levelCompleted[currentLevel] = true;
+            currentUser.completedLevels = levelCompleted;
+            if (currentLevel > currentUser.maxLevel) {
+                currentUser.maxLevel = currentLevel;
+            }
+        }
+        
+        currentUser.points += points;
+        updatePointsDisplay();
+        saveUser();
+        
+        if (currentStreak > 0 && currentStreak % 5 === 0) {
+            setTimeout(() => {
+                showRewardCheck();
+            }, 500);
+        } else {
+            setTimeout(() => {
+                startLevel(currentLevel + 1);
+            }, 1000);
+        }
+    } else {
+        boxes[index].classList.add('wrong');
+        boxes[correctIndex].classList.add('correct');
+        statusDiv.textContent = '✗ Raté! Recommencez.';
+        statusDiv.className = 'game-status error';
+        
+        setTimeout(() => {
+            resetGame();
+        }, 2000);
+    }
+}
+
+// Show reward check
+function showRewardCheck() {
+    document.getElementById('rewardCheckModal').classList.remove('hidden');
+}
+
+// Validate progress
+function validateProgress() {
+    document.getElementById('rewardCheckModal').classList.add('hidden');
+    startLevel(currentLevel + 1);
+}
+
+// Reset game
+function resetGame() {
+    currentLevel = 1;
+    currentStreak = 0;
+    startLevel(1);
+}
+
+// Save user
+function saveUser() {
+    localStorage.setItem(currentUser.key, JSON.stringify(currentUser));
+}
+
+// Show rewards
+function showRewards() {
+    const modal = document.getElementById('rewardsModal');
+    const rewardsList = document.getElementById('rewardsList');
+    
+    document.getElementById('modalUserPoints').textContent = currentUser.points;
+    
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    const customRewards = JSON.parse(localStorage.getItem('customRewards'));
+    const deletedIds = JSON.parse(localStorage.getItem('deletedRewardIds')) || [];
+    
+	const defaultRewards = [
+    { id: 'paypal_050', name: 'PayPal 0.50€', points: 5000, desc: 'Argent envoyé sur votre compte PayPal' },
+    { id: 'paypal_100', name: 'PayPal 1.00€', points: 10000, desc: 'Argent envoyé sur votre compte PayPal' },
+    { id: 'paypal_500', name: 'PayPal 5.00€', points: 50000, desc: 'Argent envoyé sur votre compte PayPal' },
+    { id: 'robux_15', name: '15 Robux', points: 15000, desc: 'Code de recharge Robux' },
+    { id: 'robux_40', name: '40 Robux', points: 40000, desc: 'Code de recharge Robux' },
+    { id: 'robux_100', name: '100 Robux', points: 100000, desc: 'Code de recharge Robux' }
+];
+    
+    // FILTRE ICI AUSSI POUR LA BOUTIQUE JOUEUR
+    const allRewards = [...defaultRewards, ...customRewards].filter(r => !deletedIds.includes(r.id));
+    
+    rewardsList.innerHTML = '';
+    
+    allRewards.forEach(reward => {
+        const rewardStock = stock[reward.id] || { quantity: 0, codes: [] };
+        const availableStock = rewardStock.codes ? rewardStock.codes.length : rewardStock.quantity || 0;
+        
+        const div = document.createElement('div');
+        div.className = `reward-card ${availableStock === 0 || currentUser.points < reward.points ? 'unavailable' : ''}`;
+        
+        if (availableStock > 0 && currentUser.points >= reward.points) {
+            div.onclick = () => selectReward({...reward, stock: availableStock});
+        }
+        
+        div.innerHTML = `
+            <div class="reward-card-header">
+                <div>
+                    <div class="reward-name">${reward.name}</div>
+                    <div class="reward-description">${reward.desc}</div>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                <div class="reward-points">${reward.points} pts</div>
+                <span class="reward-stock ${availableStock === 0 ? 'out' : ''}">
+                    ${availableStock > 0 ? `Stock: ${availableStock}` : 'Épuisé'}
+                </span>
+            </div>
+        `;
+        
+        rewardsList.appendChild(div);
+    });
+    
+    document.getElementById('withdrawFormCard').style.display = 'none';
+    showWithdrawTab('withdraw');
+    modal.classList.remove('hidden');
+}
+
+// Select reward for withdrawal
+let selectedReward = null;
+
+function selectReward(reward) {
+    selectedReward = reward;
+    
+    document.getElementById('selectedRewardName').value = reward.name;
+    document.getElementById('withdrawPoints').value = reward.points + ' points';
+    document.getElementById('withdrawEmail').value = '';
+    
+    const commission = reward.points * 0.30;
+    const willReceive = reward.points - commission;
+    
+    document.getElementById('commissionDisplay').textContent = `- ${commission} points (30%)`;
+    document.getElementById('receiveDisplay').textContent = willReceive + ' points de valeur';
+    
+    document.getElementById('withdrawFormCard').style.display = 'block';
+    document.getElementById('withdrawFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Submit withdrawal
+function submitWithdraw() {
+    if (!selectedReward) {
+        alert('Veuillez sélectionner une récompense!');
+        return;
+    }
+    
+    const email = document.getElementById('withdrawEmail').value.trim();
+    
+    if (!email) {
+        alert('Veuillez entrer votre email ou identifiant!');
+        return;
+    }
+    
+    if (currentUser.points < selectedReward.points) {
+        alert('Points insuffisants!');
+        return;
+    }
+    
+    const stock = JSON.parse(localStorage.getItem('rewardStock'));
+    const rewardStock = stock[selectedReward.id];
+    
+    if (!rewardStock || !rewardStock.codes || rewardStock.codes.length === 0) {
+        alert('❌ Erreur: Aucun code disponible pour cette récompense. Contactez l\'administrateur.');
+        return;
+    }
+    
+    const code = rewardStock.codes.shift();
+    rewardStock.quantity = rewardStock.codes.length;
+    
+    localStorage.setItem('rewardStock', JSON.stringify(stock));
+    
+    const history = JSON.parse(localStorage.getItem('withdrawalHistory'));
+    history.push({
+        userKey: currentUser.key,
+        rewardName: selectedReward.name,
+        email: email,
+        code: code,
+        points: selectedReward.points,
+        date: Date.now(),
+        status: 'completed'
+    });
+    localStorage.setItem('withdrawalHistory', JSON.stringify(history));
+    
+    alert(`✅ RETRAIT RÉUSSI!\n\n🎁 Récompense: ${selectedReward.name}\n\n🔑 Votre Code/Lien:\n${code}\n\n📧 Envoyé à: ${email}\n\n⚠️ Sauvegardez ce code immédiatement!`);
+    
+    selectedReward = null;
+    document.getElementById('withdrawFormCard').style.display = 'none';
+    document.getElementById('withdrawEmail').value = '';
+    
+    showRewards();
+}
+
+// Show withdraw tab
+function showWithdrawTab(tabName) {
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.withdraw-tab').forEach(tab => tab.classList.remove('active'));
+    
+    if (tabName === 'withdraw') {
+        document.querySelector('.nav-item:nth-child(1)').classList.add('active');
+        document.getElementById('withdrawTab').classList.add('active');
+    } else if (tabName === 'history') {
+        document.querySelector('.nav-item:nth-child(2)').classList.add('active');
+        document.getElementById('historyTab').classList.add('active');
+    }
+}
+
+// Close rewards modal
 function closeRewards() {
     document.getElementById('rewardsModal').classList.add('hidden');
 }
 
+// Logout
 function logout() {
-    if (confirm('Se déconnecter de la session actuelle ?')) {
-        location.reload();
+    if (confirm('Voulez-vous vraiment vous déconnecter?')) {
+        currentUser = null;
+        currentLevel = 1;
+        currentStreak = 0;
+        levelCompleted = {};
+        isAdmin = false;
+        
+        document.getElementById('gameScreen').classList.remove('active');
+        document.getElementById('adminPanel').classList.remove('active');
+        document.getElementById('authScreen').classList.add('active');
+        document.getElementById('keyInput').value = '';
+        document.getElementById('createAccountForm').classList.add('hidden');
+        document.getElementById('loginForm').classList.add('hidden');
+        document.getElementById('keyDisplay').classList.add('hidden');
     }
 }
 
-// ------------------------------------------------------------------------------
-// 9. INITIALISATION FINALE AU CHARGEMENT DE LA PAGE
-// ------------------------------------------------------------------------------
+// Initialize
 window.onload = function() {
-    console.log("Système Chargé à 100%");
-    
-    // Force l'affichage de l'écran d'accueil
-    const auth = document.getElementById('authScreen');
-    const game = document.getElementById('gameScreen');
-    const admin = document.getElementById('adminPanel');
-    
-    if(auth) auth.classList.add('active');
-    if(game) game.classList.remove('active');
-    if(admin) admin.classList.remove('active');
+    document.getElementById('authScreen').classList.add('active');
+    document.getElementById('gameScreen').classList.remove('active');
+    document.getElementById('adminPanel').classList.remove('active');
 };
-
-/**
- * FIN DU SCRIPT - COLOR VISION TEST
- * ------------------------------------------------------------------------------
- * Ce code est conçu pour être intégré dans un environnement HTML5/CSS3.
- * Il gère la persistance des données via LocalStorage.
- * ------------------------------------------------------------------------------
- */
