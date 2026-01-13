@@ -689,11 +689,23 @@ function submitWithdraw() {
         return;
     }
     
+    // 1. On récupère le code et on met à jour le stock
     const code = rewardStock.codes.shift();
     rewardStock.quantity = rewardStock.codes.length;
-    
     localStorage.setItem('rewardStock', JSON.stringify(stock));
+
+    // --- MISE À JOUR DES POINTS (LA CORRECTION) ---
+    // 2. On retire les points de l'utilisateur
+    currentUser.points -= selectedReward.points;
     
+    // 3. On sauvegarde le compte utilisateur mis à jour
+    saveUser(); 
+    
+    // 4. On actualise l'affichage des points sur l'écran
+    updatePointsDisplay();
+    // ----------------------------------------------
+    
+    // 5. Enregistrement dans l'historique
     const history = JSON.parse(localStorage.getItem('withdrawalHistory'));
     history.push({
         userKey: currentUser.key,
@@ -712,6 +724,7 @@ function submitWithdraw() {
     document.getElementById('withdrawFormCard').style.display = 'none';
     document.getElementById('withdrawEmail').value = '';
     
+    // Relance la boutique (pour voir que l'objet a disparu si stock = 0)
     showRewards();
 }
 
