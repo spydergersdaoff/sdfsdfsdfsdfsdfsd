@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Vision Test - Gagnez des Récompenses!</title>
+    <link rel="stylesheet" href="style.css">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7001182916003882"
+     crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="stars"></div>
+    <div class="stars2"></div>
+    <div class="stars3"></div>
+
+    <!-- Auth Screen -->
+    <div id="authScreen" class="screen active">
+        <div class="auth-container">
+            <div class="logo-container">
+                <div class="logo-circle">
+                    <span class="logo-emoji">👁️</span>
+                </div>
+            </div>
+            <h1 class="main-title">Color Vision Test</h1>
+            <p class="subtitle">Testez votre vision et gagnez des récompenses instantanées!</p>
+            
+            <div class="auth-buttons">
+                <button onclick="showCreateAccount()" class="btn btn-primary btn-glow">
+                    <span>✨</span> Créer un Compte
+                </button>
+                <button onclick="showLogin()" class="btn btn-secondary btn-glow">
+                    <span>🔐</span> Se Connecter
+                </button>
+            </div>
+            
+            <div id="createAccountForm" class="auth-form hidden">
+                <h2>🎯 Créer un Compte</h2>
+                <p>Cliquez pour générer votre clé unique</p>
+                <button onclick="createAccount()" class="btn btn-success btn-glow">🎲 Générer ma Clé</button>
+            </div>
+            
+            <div id="loginForm" class="auth-form hidden">
+                <h2>🔐 Se Connecter</h2>
+                <input type="text" id="keyInput" placeholder="Entrez votre clé ou mot de passe admin" class="key-input">
+                <button onclick="login()" class="btn btn-success btn-glow">→ Connexion</button>
+            </div>
+            
+            <div id="keyDisplay" class="key-display hidden">
+                <h2>✅ Votre Clé a été générée!</h2>
+                <div class="key-box">
+                    <span id="generatedKey"></span>
+                </div>
+                <p class="warning">⚠️ SAUVEGARDEZ CETTE CLÉ! Elle vous permettra de vous reconnecter.</p>
+                <button onclick="continueToGame()" class="btn btn-primary btn-glow">🎮 Continuer vers le jeu</button>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">💎</div>
+                    <h3>Gagnez des Points</h3>
+                    <p>5pts par niveau</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎁</div>
+                    <h3>Récompenses</h3>
+                    <p>Cartes cadeaux</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Retrait Instant</h3>
+                    <p>En 24-48h</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AdBlock Warning -->
+    <div id="adblockWarning" class="adblock-warning hidden">
+        <div class="adblock-content">
+            <div class="adblock-icon">🚫</div>
+            <h2>AdBlock Détecté</h2>
+            <p>Veuillez désactiver votre bloqueur de publicités pour soutenir le jeu et accéder aux récompenses!</p>
+            <p class="adblock-subtext">Les publicités nous permettent d'offrir des récompenses gratuites</p>
+            <button onclick="checkAdblock()" class="btn btn-primary btn-glow">✓ J'ai désactivé AdBlock</button>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" class="screen">
+        <div class="header">
+            <div class="user-info">
+                <div class="user-badge">
+                    <span class="badge-icon">👤</span>
+                    <span class="user-key" id="userKeyDisplay"></span>
+                </div>
+                <div class="points-badge">
+                    <span class="points-icon">💰</span>
+                    <span class="user-points" id="userPoints">0</span>
+                    <span class="points-label">points</span>
+                </div>
+            </div>
+            <button onclick="logout()" class="btn btn-small btn-logout">🚪 Déconnexion</button>
+        </div>
+
+        <!-- Ad Space Top -->
+        <div class="ad-container">
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-7001182916003882"
+                 data-ad-slot="1543577498"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+        </div>
+
+        <div class="game-container">
+            <div class="game-info">
+                <div class="stat-card level-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Niveau</div>
+                        <div class="stat-value" id="currentLevel">1</div>
+                    </div>
+                </div>
+                <div class="stat-card streak-card">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Série</div>
+                        <div class="stat-value" id="currentStreak">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="game-wrapper">
+                <div id="gameGrid" class="game-grid"></div>
+                <div class="game-hint">Trouvez la couleur différente!</div>
+            </div>
+
+            <div class="game-status" id="gameStatus"></div>
+
+            <button onclick="resetGame()" class="btn btn-secondary btn-glow">🔄 Recommencer</button>
+        </div>
+
+        <!-- Ad Space Middle -->
+        <div class="ad-container">
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-7001182916003882"
+                 data-ad-slot="1543577498"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+        </div>
+
+        <div class="rewards-section">
+            <div class="rewards-header">
+                <h2>🎁 Récompenses Disponibles</h2>
+                <p class="rewards-requirement">Minimum: <strong>2500 points</strong></p>
+            </div>
+            <button onclick="showRewards()" class="btn btn-primary btn-large btn-glow">🎉 Voir les Récompenses</button>
+        </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="screen">
+        <div class="admin-container">
+            <div class="admin-header">
+                <h1>🔧 Panel Administrateur</h1>
+                <button onclick="logout()" class="btn btn-small btn-logout">Déconnexion</button>
+            </div>
+
+            <div class="admin-stats">
+                <div class="admin-stat-card">
+                    <div class="admin-stat-icon">👥</div>
+                    <div class="admin-stat-value" id="totalUsers">0</div>
+                    <div class="admin-stat-label">Utilisateurs</div>
+                </div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-icon">💰</div>
+                    <div class="admin-stat-value" id="totalPoints">0</div>
+                    <div class="admin-stat-label">Points Totaux</div>
+                </div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-icon">🎁</div>
+                    <div class="admin-stat-value" id="pendingRewards">0</div>
+                    <div class="admin-stat-label">Demandes</div>
+                </div>
+            </div>
+
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="showAdminTab('users')">👥 Utilisateurs</button>
+                <button class="admin-tab" onclick="showAdminTab('rewards')">🎁 Demandes</button>
+                <button class="admin-tab" onclick="showAdminTab('stock')">📦 Gérer Stock</button>
+                <button class="admin-tab" onclick="showAdminTab('create')">➕ Créer Récompense</button>
+            </div>
+
+            <div id="usersTab" class="admin-tab-content active">
+                <h2>Liste des Utilisateurs</h2>
+                <div id="usersList" class="admin-list"></div>
+            </div>
+
+            <div id="rewardsTab" class="admin-tab-content">
+                <h2>Demandes de Retrait</h2>
+                <div id="rewardRequestsList" class="admin-list"></div>
+            </div>
+
+            <div id="stockTab" class="admin-tab-content">
+                <h2>Gestion des Stocks & Codes</h2>
+                <div id="stockList" class="admin-list"></div>
+            </div>
+
+            <div id="createTab" class="admin-tab-content">
+                <h2>Créer une Nouvelle Récompense</h2>
+                <div class="admin-list">
+                    <div class="admin-item">
+                        <div class="form-group">
+                            <label>Nom de la Récompense</label>
+                            <input type="text" id="newRewardName" class="form-input" placeholder="Ex: Carte Cadeau Netflix 10€">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <input type="text" id="newRewardDesc" class="form-input" placeholder="Ex: Valable sur Netflix France">
+                        </div>
+                        <div class="form-group">
+                            <label>Points Requis</label>
+                            <input type="number" id="newRewardPoints" class="form-input" placeholder="2500">
+                        </div>
+                        <button class="btn btn-success btn-glow" onclick="createNewReward()">✅ Créer la Récompense</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reward Check Modal -->
+    <div id="rewardCheckModal" class="modal hidden">
+        <div class="modal-content modal-animated">
+            <div class="modal-icon">✨</div>
+            <h2>Bravo! Niveau 5 Atteint!</h2>
+            <p>Vous avez complété 5 niveaux! Cliquez pour continuer:</p>
+            <button onclick="validateProgress()" class="btn btn-large btn-success btn-glow">✓ Valider et Continuer</button>
+        </div>
+    </div>
+
+    <!-- Rewards Modal -->
+    <div id="rewardsModal" class="modal hidden">
+        <div class="withdraw-container">
+            <span class="close" onclick="closeRewards()">&times;</span>
+            
+            <!-- Sidebar -->
+            <div class="withdraw-sidebar">
+                <div class="withdraw-logo">
+                    <div class="logo-circle-small">
+                        <span>🎮</span>
+                    </div>
+                    <span class="logo-text">Rewards</span>
+                </div>
+                
+                <nav class="withdraw-nav">
+                    <a href="#" class="nav-item active" onclick="showWithdrawTab('withdraw'); return false;">
+                        <span class="nav-icon">💳</span>
+                        <span class="nav-text">Retirer</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="showWithdrawTab('history'); return false;">
+                        <span class="nav-icon">🔄</span>
+                        <span class="nav-text">Historique</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="closeRewards(); return false;">
+                        <span class="nav-icon">🎮</span>
+                        <span class="nav-text">Retour au Jeu</span>
+                    </a>
+                </nav>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="withdraw-main">
+                <div class="withdraw-header">
+                    <h1>Retirer des Récompenses</h1>
+                    <div class="user-balance">
+                        <span class="balance-icon">💰</span>
+                        <span class="balance-amount" id="modalUserPoints">0</span>
+                        <span class="balance-label">Points</span>
+                    </div>
+                </div>
+                
+                <!-- Withdraw Tab -->
+                <div id="withdrawTab" class="withdraw-tab active">
+                    <div class="withdraw-cards">
+                        <div class="withdraw-card">
+                            <div class="card-header">
+                                <span class="card-icon">🎁</span>
+                                <h2>Sélectionner une Récompense</h2>
+                            </div>
+                            <div class="card-body">
+                                <div id="rewardsList" class="rewards-grid"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="withdraw-card" id="withdrawFormCard" style="display: none;">
+                            <div class="card-header">
+                                <span class="card-icon">✏️</span>
+                                <h2>Informations de Retrait</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert-warning">
+                                    <span class="alert-icon">⚠️</span>
+                                    <span>Une commission de 30% sera appliquée à tous les retraits.</span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Type de Récompense</label>
+                                    <input type="text" id="selectedRewardName" readonly class="form-input">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Email ou Identifiant</label>
+                                    <input type="text" id="withdrawEmail" placeholder="Entrez votre email..." class="form-input">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Points Requis</label>
+                                    <input type="text" id="withdrawPoints" readonly class="form-input">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Commission (30%)</label>
+                                    <div class="commission-display" id="commissionDisplay">-</div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Vous Recevrez</label>
+                                    <div class="receive-display" id="receiveDisplay">-</div>
+                                </div>
+                                
+                                <button class="submit-button" onclick="submitWithdraw()">
+                                    <span>Soumettre la Demande</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- History Tab -->
+                <div id="historyTab" class="withdraw-tab">
+                    <div class="withdraw-card">
+                        <div class="card-header">
+                            <span class="card-icon">🔄</span>
+                            <h2>Historique des Retraits</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="empty-state">
+                                <div class="empty-icon">🔄</div>
+                                <p>Aucun historique de retrait trouvé.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script>
+        // Initialize AdSense ads
+        (adsbygoogle = window.adsbygoogle || []).push({});
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+</body>
+</html>
